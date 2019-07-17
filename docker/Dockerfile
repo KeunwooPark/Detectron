@@ -25,4 +25,4 @@ WORKDIR /detectron
 RUN make
 
 # [Optional] Build custom ops
-RUN make ops
+#RUN make ops
