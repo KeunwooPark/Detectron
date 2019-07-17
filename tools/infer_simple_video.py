@@ -77,13 +77,6 @@ def parse_args():
 	required = True
     )
     parser.add_argument(
-        '--output',
-        dest='output_fn',
-        help='output file name',
-        type=str,
-	required = True
-    )
-    parser.add_argument(
         '--thresh',
         dest='thresh',
         help='Threshold for visualizing detections',
@@ -96,6 +89,13 @@ def parse_args():
         help='Threshold for visualizing keypoints',
         default=2.0,
         type=float
+    )
+    parser.add_argument(
+        '--output-dir',
+        dest='output_dir',
+        help='directory for visualization pdfs (default: /tmp/infer_simple)',
+        default='/tmp/infer_simple_vid',
+        type=str
     )
     if len(sys.argv) == 1:
         parser.print_help()
@@ -116,18 +116,16 @@ def main(args):
     assert not cfg.TEST.PRECOMPUTED_PROPOSALS, \
         'Models that require precomputed proposals are not supported'
 
+    if not os.path.exists(args.output_dir):
+        os.makedirs(args.output_dir)
+
     model = infer_engine.initialize_model_from_cfg(args.weights)
     dummy_coco_dataset = dummy_datasets.get_coco_dataset()
 
     vid_cap = cv2.VideoCapture(args.video_fn)
-    width = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    #fourcc = cv2.VideoWriter_fourcc('X','V','I','D')
-    #fourcc = cv2.VideoWriter_fourcc("X","V","I","D")
-    vid_out = cv2.VideoWriter(args.output_fn, -1, 30.0, (width, height))
     ret = True
+    fid = 0
     while ret:
-	print(vid_out.isOpened())
 	ret, im = vid_cap.read()
 	with c2_utils.NamedCudaScope(0):
             cls_boxes, cls_segms, cls_keyps = infer_engine.im_detect_all(
@@ -144,8 +142,13 @@ def main(args):
 	    dataset = dummy_coco_dataset,
 	    show_class = True
 	)
+	im_id = "{}".format(fid)
+	fid += 1
+	out_name = os.path.join(
+            args.output_dir, '{}'.format(os.path.basename(im_id) + '.png')
+        )
 	cv2.imshow('frame', rst_im)
-	vid_out.write(rst_im)
+	cv2.imwrite(out_name, rst_im)
 	if cv2.waitKey(1) & 0xFF == ord('q'):
 	    break
 
