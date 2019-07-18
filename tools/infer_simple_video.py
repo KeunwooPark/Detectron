@@ -158,6 +158,8 @@ def main(args):
     while ret:
 	print("time:",vid_cap.get(cv2.CAP_PROP_POS_MSEC)/1000,"sec")
 	ret, im = vid_cap.read()
+	if not ret:
+	    break
 	im = cv2.resize(im, dsize = (width,height), interpolation = cv2.INTER_LINEAR)
 	with c2_utils.NamedCudaScope(0):
             cls_boxes, cls_segms, cls_keyps = infer_engine.im_detect_all(
