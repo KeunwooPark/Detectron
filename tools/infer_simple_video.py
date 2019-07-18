@@ -32,6 +32,7 @@ import logging
 import os
 import sys
 import time
+import subprocess as sp
 
 from caffe2.python import workspace
 
@@ -72,7 +73,7 @@ def parse_args():
     parser.add_argument(
         '--video',
         dest='video_fn',
-        help='video file name. only supports .avi',
+        help='video file name.',
         type=str,
 	required = True
     )
@@ -91,9 +92,9 @@ def parse_args():
         type=float
     )
     parser.add_argument(
-        '--output-dir',
-        dest='output_dir',
-        help='directory for visualization pdfs (default: /tmp/infer_simple)',
+        '--output',
+        dest='output_fn',
+        help='output video file name (default: output.mp4)',
         default='/tmp/infer_simple_vid',
         type=str
     )
@@ -116,13 +117,29 @@ def main(args):
     assert not cfg.TEST.PRECOMPUTED_PROPOSALS, \
         'Models that require precomputed proposals are not supported'
 
-    if not os.path.exists(args.output_dir):
-        os.makedirs(args.output_dir)
-
     model = infer_engine.initialize_model_from_cfg(args.weights)
     dummy_coco_dataset = dummy_datasets.get_coco_dataset()
 
     vid_cap = cv2.VideoCapture(args.video_fn)
+    width = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    #fourcc = cv2.VideoWriter_fourcc(*'XIVD')
+    #vid_out = cv2.VideoWriter('output.avi',-1, 20.0, (width,height))
+    FFMPEG_BIN = "ffmpeg"
+    command = [ FFMPEG_BIN,
+	'-y',
+	'-f', 'rawvideo',
+	'-vcodec', 'rawvideo',
+	'-s', '{}x{}'.format(width, height),
+	'-pix_fmt', 'rgb24',
+	'-r', '25',
+	'-i', '-',
+	'-an',
+	'-vcodec', 'mpeg4',
+	args.output_fn]
+    pipe = sp.Popen(command, stdin=sp.PIPE, stderr=sp.PIPE)
+    print(command)
     ret = True
     fid = 0
     while ret:
@@ -142,65 +159,18 @@ def main(args):
 	    dataset = dummy_coco_dataset,
 	    show_class = True
 	)
-	im_id = "{}".format(fid)
-	fid += 1
-	out_name = os.path.join(
-            args.output_dir, '{}'.format(os.path.basename(im_id) + '.png')
-        )
-	cv2.imshow('frame', rst_im)
-	cv2.imwrite(out_name, rst_im)
+	rgb_im = cv2.cvtColor(rst_im, cv2.COLOR_BGR2RGB)
+	cv2.imshow('frame', rgb_im)
+	pipe.stdin.write(rgb_im.tostring())
+	pipe.stdin.flush()
 	if cv2.waitKey(1) & 0xFF == ord('q'):
 	    break
 
-    """
-    for i, im_name in enumerate(im_list):
-        out_name = os.path.join(
-            args.output_dir, '{}'.format(os.path.basename(im_name) + '.' + args.output_ext)
-        )
-        logger.info('Processing {} -> {}'.format(im_name, out_name))
-        im = cv2.imread(im_name)
-        timers = defaultdict(Timer)
-        t = time.time()
-        with c2_utils.NamedCudaScope(0):
-            cls_boxes, cls_segms, cls_keyps = infer_engine.im_detect_all(
-                model, im, None, timers=timers
-            )
-        logger.info('Inference time: {:.3f}s'.format(time.time() - t))
-        for k, v in timers.items():
-            logger.info(' | {}: {:.3f}s'.format(k, v.average_time))
-        if i == 0:
-            logger.info(
-                ' \ Note: inference on the first image will be slower than the '
-                'rest (caches and auto-tuning need to warm up)'
-            )
-
-        vis_utils.vis_one_image(
-            im[:, :, ::-1],  # BGR -> RGB for visualization
-            im_name,
-            args.output_dir,
-            cls_boxes,
-            cls_segms,
-            cls_keyps,
-            dataset=dummy_coco_dataset,
-            box_alpha=0.3,
-            show_class=True,
-            thresh=args.thresh,
-            kp_thresh=args.kp_thresh,
-            ext=args.output_ext,
-            out_when_no_box=True
-        )
-    """
     vid_cap.release()
-    vid_out.release()
 
 
 if __name__ == '__main__':
     workspace.GlobalInit(['caffe2', '--caffe2_log_level=0'])
     setup_logging(__name__)
     args = parse_args()
-    """
-    if not args.output_fn.endswith('.avi'):
-	print('Supports only .avi for output format')
-	exit(-1)
-    """
     main(args)
