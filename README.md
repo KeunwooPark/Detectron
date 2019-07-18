@@ -9,6 +9,15 @@ At FAIR, Detectron has enabled numerous research projects, including: [Feature P
   <p>Example Mask R-CNN output.</p>
 </div>
 
+## What is changed from the original repository
+I added *tools/infer_simple_video.py* to run Detectron for video files. This code dumps results from Detectron for each frame to images. I'm not sure why, but I was not able to write a video file in current docker environment. VideoWriter object was not opened.
+
+### Running docker to use image display
+To see output of Detectron in real time, a docker container should be able to use a display. Run docker with this command to enable OpenCV to display images.
+```shell
+nvidia-docker run -it --env="DISPLAY" --env QT_X11_NO_MITSHM=1 --volume="/etc/group:/etc/group:ro" --volume="/etc/shadow:/etc/shadow:ro" --volume="/etc/sudoers.d:/etc/sudoers.d:ro" --volume="/tmp/.X11-unix:/tmp/.X11-unix:rw" (docker-image) /bin/bash
+```
+
 ## Introduction
 
 The goal of Detectron is to provide a high-quality, high-performance
