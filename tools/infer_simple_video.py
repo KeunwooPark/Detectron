@@ -98,6 +98,13 @@ def parse_args():
         default='/tmp/infer_simple_vid',
         type=str
     )
+    parser.add_argument(
+	'--downsize',
+	dest='downsize',
+	help='divide ratio of video. downsized before network forward.',
+	type=int,
+	default=1
+    )
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(1)
@@ -121,29 +128,37 @@ def main(args):
     dummy_coco_dataset = dummy_datasets.get_coco_dataset()
 
     vid_cap = cv2.VideoCapture(args.video_fn)
-    width = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    width = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH)/args.downsize)
+    height = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT)/args.downsize)
 
     #fourcc = cv2.VideoWriter_fourcc(*'XIVD')
     #vid_out = cv2.VideoWriter('output.avi',-1, 20.0, (width,height))
+    
     FFMPEG_BIN = "ffmpeg"
-    command = [ FFMPEG_BIN,
-	'-y',
+    command = [FFMPEG_BIN,
+	'-y', # overwrite output
 	'-f', 'rawvideo',
 	'-vcodec', 'rawvideo',
 	'-s', '{}x{}'.format(width, height),
 	'-pix_fmt', 'rgb24',
-	'-r', '25',
-	'-i', '-',
-	'-an',
+	'-r', '25', # fps
+	'-i', '-', # input comes from a pipe
+	'-an', # no audio
 	'-vcodec', 'mpeg4',
-	args.output_fn]
+	'-b:v', '30M',
+	'-maxrate', '30M',
+	'-loglevel', 'panic',
+	'-nostdin',
+	args.output_fn
+	]
     pipe = sp.Popen(command, stdin=sp.PIPE, stderr=sp.PIPE)
     print(command)
     ret = True
     fid = 0
     while ret:
+	print("time:",vid_cap.get(cv2.CAP_PROP_POS_MSEC)/1000,"sec")
 	ret, im = vid_cap.read()
+	im = cv2.resize(im, dsize = (width,height), interpolation = cv2.INTER_LINEAR)
 	with c2_utils.NamedCudaScope(0):
             cls_boxes, cls_segms, cls_keyps = infer_engine.im_detect_all(
                 model, im, None, None
@@ -160,9 +175,9 @@ def main(args):
 	    show_class = True
 	)
 	rgb_im = cv2.cvtColor(rst_im, cv2.COLOR_BGR2RGB)
-	cv2.imshow('frame', rgb_im)
+	cv2.imshow('frame', rst_im)
 	pipe.stdin.write(rgb_im.tostring())
-	pipe.stdin.flush()
+	#pipe.stdin.flush()
 	if cv2.waitKey(1) & 0xFF == ord('q'):
 	    break
 
